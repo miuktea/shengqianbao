@@ -11,6 +11,9 @@ let compareSymbols = [];
 let compareSeries = [];
 let selectedTrendSymbol = "AAPL";
 let tipIndex = 0;
+let isFetchingQuotes = false;
+let isFetchingCompare = false;
+let isFetchingTrend = false;
 let account = loadAccount();
 let username = localStorage.getItem(USER_KEY) || "";
 let watchlist = loadWatchlist();
@@ -80,6 +83,20 @@ function money(n) {
 function quoteBySymbol(symbol) {
   return marketQuotes.find((q) => q.symbol === symbol);
 }
+
+function downsamplePoints(points, maxPoints = 260) {
+  if (!Array.isArray(points) || points.length <= maxPoints) return points || [];
+  const step = points.length / maxPoints;
+  const sampled = [];
+  for (let i = 0; i < maxPoints; i += 1) {
+    sampled.push(points[Math.floor(i * step)]);
+  }
+  return sampled;
+}
+
+function isMarketTabActive() {
+  return document.getElementById("market")?.classList.contains("active");
+}
 function allLots() {
   const lots = [];
   Object.entries(account.positions).forEach(([symbol, arr]) => {
@@ -139,6 +156,7 @@ function renderMarket() {
 }
 
 async function renderCompareChart() {
+  if (isFetchingCompare) return;
   const canvas = document.getElementById("compareCanvas");
   const legend = document.getElementById("compareLegend");
   const ctx = canvas.getContext("2d");
@@ -151,6 +169,7 @@ async function renderCompareChart() {
     return;
   }
   try {
+    isFetchingCompare = true;
     const days = Number(document.getElementById("compareRange").value || 1);
     const res = await fetch(`/api/trends/compare?symbols=${encodeURIComponent(compareSymbols.join(","))}&days=${days}`);
     const data = await res.json();
@@ -164,10 +183,11 @@ async function renderCompareChart() {
 
     // 用归一化涨跌幅做比较，避免价格量级差异导致看不见
     const normalized = compareSeries.map((s) => {
-      const base = s.points[0]?.price || 1;
+      const sampled = downsamplePoints(s.points, 240);
+      const base = sampled[0]?.price || 1;
       return {
         symbol: s.symbol,
-        points: s.points.map((p) => ({ time: p.time, v: ((p.price - base) / base) * 100 }))
+        points: sampled.map((p) => ({ time: p.time, v: ((p.price - base) / base) * 100 }))
       };
     });
     const values = normalized.flatMap((s) => s.points.map((p) => p.v));
@@ -198,6 +218,8 @@ async function renderCompareChart() {
     ctx.fillStyle = "#dc2626";
     ctx.font = "14px sans-serif";
     ctx.fillText(`加载失败：${error.message}`, 20, 40);
+  } finally {
+    isFetchingCompare = false;
   }
 }
 
@@ -251,35 +273,41 @@ function renderHoldingsTable() {
 }
 
 async function fetchQuotes() {
+  if (isFetchingQuotes) return;
   marketList.innerHTML = "<p>行情加载中...</p>";
   try {
+    isFetchingQuotes = true;
     const res = await fetch(`/api/quotes?symbols=${encodeURIComponent(watchlist.join(","))}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "行情请求失败");
     marketQuotes = data.quotes || [];
     renderMarket();
-    renderCompareChart();
+    if (isMarketTabActive()) renderCompareChart();
     renderWatchlist();
     renderSymbolOptions();
     renderHoldingsTable();
     renderAssetSummary();
     if (!watchlist.includes(selectedTrendSymbol) && watchlist.length) selectedTrendSymbol = watchlist[0];
-    renderTrend();
+    if (isMarketTabActive()) renderTrend();
   } catch (error) {
     marketList.innerHTML = `<p class="red">加载失败：${error.message}</p>`;
+  } finally {
+    isFetchingQuotes = false;
   }
 }
 
 async function renderTrend() {
+  if (isFetchingTrend) return;
   const canvas = document.getElementById("trendCanvas");
   const ctx = canvas.getContext("2d");
   document.getElementById("chartTitle").textContent = `${selectedTrendSymbol} 分时走势`;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   try {
+    isFetchingTrend = true;
     const res = await fetch(`/api/trends?symbol=${selectedTrendSymbol}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "获取趋势失败");
-    const points = (data.points || []).filter((p) => Number.isFinite(p.price));
+    const points = downsamplePoints((data.points || []).filter((p) => Number.isFinite(p.price)), 220);
     if (!points.length) throw new Error("暂无曲线数据");
     const prices = points.map((p) => p.price);
     const min = Math.min(...prices);
@@ -304,6 +332,8 @@ async function renderTrend() {
     ctx.fillStyle = "#dc2626";
     ctx.font = "14px sans-serif";
     ctx.fillText(`趋势加载失败：${error.message}`, 20, 40);
+  } finally {
+    isFetchingTrend = false;
   }
 }
 
@@ -607,6 +637,10 @@ function bindEvents() {
       document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
       btn.classList.add("active");
       document.getElementById(btn.dataset.tab).classList.add("active");
+      if (btn.dataset.tab === "market") {
+        renderCompareChart();
+        renderTrend();
+      }
     });
   });
 }
@@ -621,8 +655,8 @@ function init() {
   renderHoldingsTable();
   fetchQuotes();
   setInterval(() => {
+    if (!isMarketTabActive()) return;
     fetchQuotes();
-    renderCompareChart();
-  }, 60000);
+  }, 90000);
 }
 init();

@@ -129,6 +129,15 @@ body.dark.fancy {
   box-shadow: 0 10px 22px rgba(180, 83, 9, 0.12);
 }
 
+.intro-card h2 {
+  margin: 0 0 8px;
+}
+
+.intro-card p {
+  margin: 6px 0;
+  line-height: 1.6;
+}
+
 .hero {
   display: flex;
   justify-content: space-between;

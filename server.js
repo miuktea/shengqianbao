@@ -10,6 +10,8 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const DEFAULT_SYMBOLS = ["AAPL", "TSLA", "MSFT", "NVDA", "BABA"];
 const userScores = new Map();
+const quoteCache = new Map();
+const trendCache = new Map();
 const KNOWN_US_STOCKS = {
   AAPL: { symbol: "AAPL", name: "苹果", quoteId: "105.AAPL", exchange: "NASDAQ" },
   TSLA: { symbol: "TSLA", name: "特斯拉", quoteId: "105.TSLA", exchange: "NASDAQ" },
@@ -25,6 +27,32 @@ const KNOWN_US_STOCKS = {
 function safeNumber(value, fallback = 0) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getWithRetry(url, options = {}, retries = 2) {
+  let lastError;
+  for (let i = 0; i <= retries; i += 1) {
+    try {
+      const response = await axios.get(url, {
+        timeout: 12000,
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+          Accept: "application/json,text/plain,*/*"
+        },
+        ...options
+      });
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (i < retries) await sleep(400 * (i + 1));
+    }
+  }
+  throw lastError;
 }
 
 async function searchStocksByKeyword(keyword) {
@@ -52,7 +80,7 @@ async function searchStocksByKeyword(keyword) {
   const url = `https://searchapi.eastmoney.com/api/suggest/get?input=${encodeURIComponent(
     normalized
   )}&type=14&count=20`;
-  const { data } = await axios.get(url, { timeout: 8000 });
+  const { data } = await getWithRetry(url, {}, 1);
   const rows = data?.QuotationCodeTable?.Data || [];
   const usRows = rows
     .filter((row) => row.Classify === "UsStock" && row.QuoteID)
@@ -108,7 +136,7 @@ async function fetchEastmoneyQuotes(symbols) {
   const url = `https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=${fields}&secids=${encodeURIComponent(
     secids
   )}`;
-  const { data } = await axios.get(url, { timeout: 12000 });
+  const { data } = await getWithRetry(url, {}, 2);
   const diff = data?.data?.diff || [];
 
   const mappedBySymbol = {};
@@ -155,10 +183,34 @@ app.get("/api/quotes", async (req, res) => {
     }
     const quotes = await fetchEastmoneyQuotes(symbols);
     if (!quotes.length) {
+      const key = symbols.join(",");
+      const cached = quoteCache.get(key);
+      if (cached) {
+        return res.json({
+          updatedAt: cached.updatedAt,
+          quotes: cached.quotes,
+          fromCache: true
+        });
+      }
       return res.status(502).json({ error: "行情源暂不可用，请稍后刷新" });
     }
+    quoteCache.set(symbols.join(","), { updatedAt: Date.now(), quotes });
     res.json({ updatedAt: Date.now(), quotes });
   } catch (error) {
+    const rawSymbols = String(req.query.symbols || DEFAULT_SYMBOLS.join(","));
+    const symbols = rawSymbols
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean)
+      .slice(0, 20);
+    const cached = quoteCache.get(symbols.join(","));
+    if (cached) {
+      return res.json({
+        updatedAt: cached.updatedAt,
+        quotes: cached.quotes,
+        fromCache: true
+      });
+    }
     res.status(500).json({
       error: "获取行情失败，请稍后重试",
       detail: error.message
@@ -175,7 +227,7 @@ app.get("/api/trends", async (req, res) => {
     const url = `https://push2.eastmoney.com/api/qt/stock/trends2/get?secid=${encodeURIComponent(
       quoteId
     )}&fields1=f1,f2,f3,f4,f5,f6,f7,f8&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=1`;
-    const { data } = await axios.get(url, { timeout: 10000 });
+    const { data } = await getWithRetry(url, {}, 2);
     const trends = data?.data?.trends || [];
     const points = trends.map((line) => {
       const parts = String(line).split(",");
@@ -186,8 +238,17 @@ app.get("/api/trends", async (req, res) => {
         volume: safeNumber(parts[5])
       };
     });
+    if (!points.length) {
+      const cached = trendCache.get(symbol);
+      if (cached) return res.json({ symbol, points: cached, fromCache: true });
+      return res.status(502).json({ error: "暂无趋势数据" });
+    }
+    trendCache.set(symbol, points);
     res.json({ symbol, points });
   } catch (error) {
+    const symbol = String(req.query.symbol || "AAPL").toUpperCase();
+    const cached = trendCache.get(symbol);
+    if (cached) return res.json({ symbol, points: cached, fromCache: true });
     res.status(500).json({ error: "获取趋势失败", detail: error.message });
   }
 });
@@ -211,7 +272,7 @@ app.get("/api/trends/compare", async (req, res) => {
         const url = `https://push2.eastmoney.com/api/qt/stock/trends2/get?secid=${encodeURIComponent(
           quoteId
         )}&fields1=f1,f2,f3,f4,f5,f6,f7,f8&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=${days}`;
-        const { data } = await axios.get(url, { timeout: 12000 });
+        const { data } = await getWithRetry(url, {}, 2);
         const trends = data?.data?.trends || [];
         const points = trends
           .map((line) => {

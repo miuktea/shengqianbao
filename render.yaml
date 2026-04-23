@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: shengqianbao
+    runtime: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20

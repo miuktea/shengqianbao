@@ -20,6 +20,7 @@ body {
   background: var(--bg);
   color: var(--text);
   background-image: linear-gradient(135deg, #fff7e6, #fff1cc 45%, #ffe7b3);
+  min-height: 100vh;
 }
 
 #moneyRainLayer {
@@ -30,12 +31,38 @@ body {
   z-index: 9999;
 }
 
+.festive-bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.festive-bg span {
+  position: absolute;
+  font-size: 24px;
+  opacity: 0.12;
+  animation: floatFestive 8s ease-in-out infinite;
+}
+
+.festive-bg span:nth-child(1) { left: 8%; top: 12%; animation-delay: 0s; }
+.festive-bg span:nth-child(2) { left: 85%; top: 18%; animation-delay: 1.2s; }
+.festive-bg span:nth-child(3) { left: 12%; top: 78%; animation-delay: 2.1s; }
+.festive-bg span:nth-child(4) { left: 72%; top: 72%; animation-delay: 3.2s; }
+.festive-bg span:nth-child(5) { left: 48%; top: 8%; animation-delay: 4s; }
+
+@keyframes floatFestive {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-10px) rotate(8deg); }
+}
+
 body.dark {
-  --bg: #0b1220;
-  --card: #111b2e;
-  --text: #f1f5f9;
-  --muted: #94a3b8;
-  --line: #22314d;
+  --bg: #120b06;
+  --card: #1f130b;
+  --text: #ffe9c7;
+  --muted: #d8b488;
+  --line: #5a3b1f;
+  --primary: #f59e0b;
 }
 
 body.fancy {
@@ -43,7 +70,7 @@ body.fancy {
 }
 
 body.dark.fancy {
-  background: radial-gradient(circle at top left, #2c1e55, #0b1220);
+  background: radial-gradient(circle at top left, #4a1f11, #120b06 60%);
 }
 
 .topbar {
@@ -54,6 +81,8 @@ body.dark.fancy {
   justify-content: space-between;
   gap: 16px;
   align-items: center;
+  position: relative;
+  z-index: 1;
 }
 .topbar h1 {
   color: #b45309;
@@ -72,6 +101,8 @@ body.dark.fancy {
   max-width: 1100px;
   margin: 16px auto 30px;
   padding: 0 16px;
+  position: relative;
+  z-index: 1;
 }
 .login-card {
   display: flex;
@@ -140,12 +171,20 @@ body.dark.fancy {
   border-radius: 999px;
   padding: 8px 14px;
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .tab.active {
   border-color: #b45309;
   color: #b45309;
   background: #fff2d6;
+  transform: translateY(-1px);
+}
+
+body.dark .tab.active {
+  background: #3a2511;
+  color: #ffd394;
+  border-color: #f59e0b;
 }
 
 .tab-panel {
@@ -277,6 +316,12 @@ select {
   border-radius: 10px;
   padding: 8px 12px;
   cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 16px rgba(180, 83, 9, 0.12);
 }
 
 .btn-gradient {

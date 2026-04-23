@@ -14,6 +14,7 @@ let tipIndex = 0;
 let isFetchingQuotes = false;
 let isFetchingCompare = false;
 let isFetchingTrend = false;
+let localCompareHistory = loadLocalCompareHistory();
 let account = loadAccount();
 let username = localStorage.getItem(USER_KEY) || "";
 let watchlist = loadWatchlist();
@@ -96,6 +97,30 @@ function downsamplePoints(points, maxPoints = 260) {
 
 function isMarketTabActive() {
   return document.getElementById("market")?.classList.contains("active");
+}
+
+function loadLocalCompareHistory() {
+  try {
+    return JSON.parse(localStorage.getItem("shengqianbao_compare_history") || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalCompareHistory() {
+  localStorage.setItem("shengqianbao_compare_history", JSON.stringify(localCompareHistory));
+}
+
+function appendLocalComparePoint(symbol, price) {
+  if (!Number.isFinite(price) || price <= 0) return;
+  if (!localCompareHistory[symbol]) localCompareHistory[symbol] = [];
+  localCompareHistory[symbol].push({
+    time: new Date().toISOString().slice(0, 19).replace("T", " "),
+    price
+  });
+  if (localCompareHistory[symbol].length > 300) {
+    localCompareHistory[symbol] = localCompareHistory[symbol].slice(-300);
+  }
 }
 function allLots() {
   const lots = [];
@@ -214,10 +239,49 @@ async function renderCompareChart() {
       .map((s, i) => `<span style="margin-right:10px;color:${colors[i % colors.length]}">${s.symbol}</span>`)
       .join("") + `<span> | 时间: ${timeStart} ~ ${timeEnd} | 实时刷新: 60秒</span>`;
   } catch (error) {
-    legend.textContent = `对比曲线失败：${error.message}`;
-    ctx.fillStyle = "#dc2626";
-    ctx.font = "14px sans-serif";
-    ctx.fillText(`加载失败：${error.message}`, 20, 40);
+    // 兜底：使用本地累计价格历史画对比，避免出现空白和红报错
+    const fallbackSeries = compareSymbols
+      .map((s) => ({
+        symbol: s,
+        points: downsamplePoints(localCompareHistory[s] || [], 180)
+      }))
+      .filter((s) => s.points.length >= 2);
+    if (!fallbackSeries.length) {
+      legend.textContent = "对比曲线暂时不可用，请稍后刷新。";
+      ctx.fillStyle = "#dc2626";
+      ctx.font = "14px sans-serif";
+      ctx.fillText("对比曲线加载中，请先等待几次行情刷新。", 20, 40);
+    } else {
+      const colors = ["#2563eb", "#dc2626", "#059669", "#7c3aed", "#f59e0b", "#0891b2"];
+      const pad = 28;
+      const w = canvas.width - pad * 2;
+      const h = canvas.height - pad * 2;
+      const normalized = fallbackSeries.map((s) => {
+        const base = s.points[0]?.price || 1;
+        return {
+          symbol: s.symbol,
+          points: s.points.map((p) => ({ time: p.time, v: ((p.price - base) / base) * 100 }))
+        };
+      });
+      const values = normalized.flatMap((s) => s.points.map((p) => p.v));
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      normalized.forEach((series, idx) => {
+        ctx.strokeStyle = colors[idx % colors.length];
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        series.points.forEach((p, i) => {
+          const x = pad + (i / (series.points.length - 1 || 1)) * w;
+          const y = pad + ((max - p.v) / (max - min || 1)) * h;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      });
+      legend.innerHTML = normalized
+        .map((s, i) => `<span style="margin-right:10px;color:${colors[i % colors.length]}">${s.symbol}</span>`)
+        .join("") + "<span> | 使用本地缓存走势（网络波动兜底）</span>";
+    }
   } finally {
     isFetchingCompare = false;
   }
@@ -281,6 +345,8 @@ async function fetchQuotes() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "行情请求失败");
     marketQuotes = data.quotes || [];
+    marketQuotes.forEach((q) => appendLocalComparePoint(q.symbol, q.price));
+    saveLocalCompareHistory();
     renderMarket();
     if (isMarketTabActive()) renderCompareChart();
     renderWatchlist();

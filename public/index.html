@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>生钱宝 - AI模拟理财产品</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="moneyRainLayer"></div>
+    <header class="topbar">
+      <div>
+        <h1>生钱宝 · 招财版</h1>
+        <p>不花真钱，也能学习投资</p>
+      </div>
+      <div class="top-actions">
+        <button id="themeBtn" class="btn">切换暗黑模式</button>
+        <button id="uiBtn" class="btn btn-gradient">切换炫彩界面</button>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card login-card">
+        <div>
+          <h3>玩家身份</h3>
+          <p class="muted">输入昵称后，系统会把你的最好成绩加入排行榜。</p>
+        </div>
+        <div class="login-inline">
+          <input id="usernameInput" type="text" maxlength="20" placeholder="请输入昵称，例如：小白投资王" />
+          <button id="loginBtn" class="btn">登录/切换用户</button>
+          <span id="currentUser" class="muted"></span>
+        </div>
+      </section>
+
+      <section class="hero card">
+        <div>
+          <h2>你的模拟资产</h2>
+          <p class="muted">初始资金 100,000，可自由模拟买卖股票。</p>
+        </div>
+        <div class="hero-metrics">
+          <div>
+            <span>现金</span>
+            <strong id="cashValue">-</strong>
+          </div>
+          <div>
+            <span>持仓市值</span>
+            <strong id="holdingsValue">-</strong>
+          </div>
+          <div>
+            <span>总资产</span>
+            <strong id="totalValue">-</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="tabs">
+        <button class="tab active" data-tab="market">真实行情</button>
+        <button class="tab" data-tab="trade">模拟交易</button>
+        <button class="tab" data-tab="advisor">AI理财建议</button>
+        <button class="tab" data-tab="learn">学习中心</button>
+        <button class="tab" data-tab="rank">排行榜</button>
+      </section>
+
+      <section id="market" class="tab-panel card active">
+        <div class="panel-title">
+          <h3>实时市场快照</h3>
+          <button id="refreshBtn" class="btn">刷新行情</button>
+        </div>
+        <div class="search-row">
+          <input id="searchInput" type="text" placeholder="搜索股票代码/名称，例如 AAPL、Tesla" />
+          <button id="searchBtn" class="btn">搜索真实股票</button>
+          <button id="loadDefaultBtn" class="btn">恢复默认自选</button>
+        </div>
+        <div id="searchResultWrap" class="search-result"></div>
+        <p class="muted">你可以维护自己的自选池，系统会按你的自选展示行情。</p>
+        <div id="watchlistWrap" class="watchlist"></div>
+        <div id="marketList" class="grid-list"></div>
+        <div class="compare-wrap">
+          <div class="panel-title">
+            <h4>多股对比台（最多6支）</h4>
+            <small class="muted">在股票卡片上点击“加入对比”即可查看走势</small>
+          </div>
+          <div class="compare-controls">
+            <label>时间段
+              <select id="compareRange">
+                <option value="1">近1天</option>
+                <option value="3">近3天</option>
+                <option value="5">近5天</option>
+              </select>
+            </label>
+            <button id="compareRefreshBtn" class="btn">刷新曲线</button>
+          </div>
+          <canvas id="compareCanvas" width="1000" height="280"></canvas>
+          <div id="compareLegend" class="muted"></div>
+        </div>
+        <div class="chart-wrap">
+          <div class="panel-title">
+            <h4 id="chartTitle">分时走势</h4>
+            <small class="muted">点击任意股票卡片即可切换曲线</small>
+          </div>
+          <canvas id="trendCanvas" width="1000" height="260"></canvas>
+        </div>
+      </section>
+
+      <section id="trade" class="tab-panel card">
+        <h3>模拟买卖</h3>
+        <div class="trade-form">
+          <label>股票代码
+            <select id="symbolSelect"></select>
+          </label>
+          <label>数量
+            <input id="qtyInput" type="number" min="1" value="1" />
+          </label>
+          <div class="trade-actions">
+            <button id="buyBtn" class="btn btn-success">买入</button>
+            <button id="sellBtn" class="btn btn-danger">卖出</button>
+            <button id="resetBtn" class="btn">重置账户</button>
+          </div>
+        </div>
+        <div class="simulator">
+          <h4>未来收益模拟器（教育用途）</h4>
+          <label>假设年化收益率（%）
+            <input id="rateInput" type="number" min="0" max="50" step="0.5" value="8" />
+          </label>
+          <label>投资年限
+            <input id="yearsInput" type="number" min="1" max="50" value="5" />
+          </label>
+          <button id="forecastBtn" class="btn">计算未来资产</button>
+          <p id="forecastText" class="forecast-text"></p>
+        </div>
+        <h4>当前持仓</h4>
+        <div id="holdingsTableWrap"></div>
+        <h4>交易记录与今日盈亏（按每笔买入）</h4>
+        <div id="lotTableWrap"></div>
+      </section>
+
+      <section id="advisor" class="tab-panel card">
+        <h3>AI新手顾问</h3>
+        <div class="advisor-box">
+          <h4>投资者小测评（先测再给建议）</h4>
+          <div class="quiz-grid">
+            <label>年龄段
+              <select id="ageGroup">
+                <option value="student">学生/刚工作</option>
+                <option value="young">25-35岁</option>
+                <option value="mature">35岁以上</option>
+              </select>
+            </label>
+            <label>投资目标
+              <select id="goalType">
+                <option value="growth">追求增长</option>
+                <option value="balanced">稳中求进</option>
+                <option value="capital">保本优先</option>
+              </select>
+            </label>
+            <label>可承受最大回撤
+              <select id="drawdownLevel">
+                <option value="low">5%以内</option>
+                <option value="mid">5%-15%</option>
+                <option value="high">15%以上</option>
+              </select>
+            </label>
+            <label>计划投资周期
+              <select id="horizon">
+                <option value="short">1年内</option>
+                <option value="mid">1-3年</option>
+                <option value="long">3年以上</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="advisor-box">
+          <label>你的风险偏好
+            <select id="riskLevel">
+              <option value="low">稳健型（怕亏损）</option>
+              <option value="medium" selected>平衡型（可承受波动）</option>
+              <option value="high">进取型（追求收益）</option>
+            </select>
+          </label>
+          <button id="adviceBtn" class="btn btn-gradient">生成建议</button>
+          <div id="adviceText" class="advice-text"></div>
+        </div>
+      </section>
+
+      <section id="learn" class="tab-panel card">
+        <h3>每日理财知识 + 新手任务</h3>
+        <div class="learn-grid">
+          <div class="advisor-box">
+            <h4>每日知识卡片</h4>
+            <p id="dailyTipText" class="advice-text"></p>
+            <div class="trade-actions">
+              <button id="prevTipBtn" class="btn">上一条</button>
+              <button id="nextTipBtn" class="btn">下一条</button>
+            </div>
+          </div>
+          <div class="advisor-box">
+            <h4>新手任务（点“完成”领奖励）</h4>
+            <div id="taskList"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="rank" class="tab-panel card">
+        <div class="panel-title">
+          <h3>排行榜（按总资产）</h3>
+          <button id="refreshRankBtn" class="btn">刷新排行榜</button>
+        </div>
+        <div id="rankWrap"></div>
+      </section>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
